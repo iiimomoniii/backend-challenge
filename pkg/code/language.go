@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 )
 
+//go:embed data/error.json
 var errorCatalogRaw []byte
 
 type Entry struct {

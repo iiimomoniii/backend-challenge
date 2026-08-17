@@ -30,6 +30,7 @@ var (
 	ErrUsernameAlreadyExists = &Error{Code: CodeUsernameAlreadyExists, Message: "Username already exists"}
 	ErrUserNotFound          = &Error{Code: CodeUserNotFound, Message: "User not found"}
 	ErrInvalidCredentials    = &Error{Code: CodeInvalidCredentials, Message: "Invalid email or password"}
+	ErrInvalidInput          = &Error{Code: CodeInvalidInput, Message: "Invalid input"}
 )
 
 func AsDomainError(err error) (*Error, bool) {

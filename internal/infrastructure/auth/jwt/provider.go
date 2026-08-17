@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	domainauth "github.com/iiimomoniii/backend-challenge/internal/domain/auth"
 )
 
 type Provider struct {
@@ -13,15 +15,13 @@ type Provider struct {
 	ttl    time.Duration
 }
 
+// New สร้าง jwt.Provider ซึ่ง implement domainauth.TokenProvider
 func New(secret string, ttl time.Duration) *Provider {
 	return &Provider{secret: []byte(secret), ttl: ttl}
 }
 
-type authPayload struct {
-	UserID    string
-	Email     string
-	ExpiresAt time.Time
-}
+// ตรวจสอบตอน compile ว่า *Provider implement domainauth.TokenProvider ครบ
+var _ domainauth.TokenProvider = (*Provider)(nil)
 
 type jwtClaims struct {
 	UserID string `json:"user_id"`
@@ -29,7 +29,7 @@ type jwtClaims struct {
 	jwt.RegisteredClaims
 }
 
-func (p *Provider) Generate(ctx context.Context, payload authPayload) (string, error) {
+func (p *Provider) Generate(ctx context.Context, payload domainauth.AuthPayload) (string, error) {
 	expiresAt := payload.ExpiresAt
 	if expiresAt.IsZero() {
 		expiresAt = time.Now().Add(p.ttl)
@@ -48,7 +48,7 @@ func (p *Provider) Generate(ctx context.Context, payload authPayload) (string, e
 	return token.SignedString(p.secret)
 }
 
-func (p *Provider) Verify(ctx context.Context, tokenString string) (*authPayload, error) {
+func (p *Provider) Verify(ctx context.Context, tokenString string) (*domainauth.AuthPayload, error) {
 	parsed, err := jwt.ParseWithClaims(tokenString, &jwtClaims{}, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("unexpected signing method")
@@ -62,5 +62,5 @@ func (p *Provider) Verify(ctx context.Context, tokenString string) (*authPayload
 	if !ok || !parsed.Valid {
 		return nil, errors.New("invalid token")
 	}
-	return &authPayload{UserID: c.UserID, Email: c.Email, ExpiresAt: c.ExpiresAt.Time}, nil
+	return &domainauth.AuthPayload{UserID: c.UserID, Email: c.Email, ExpiresAt: c.ExpiresAt.Time}, nil
 }
