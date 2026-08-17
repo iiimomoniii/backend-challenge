@@ -1,0 +1,9 @@
+{
+  "USR001": { "id": "USR001", "name": "USERNAME_REQUIRED", "messageEN": "Username is required", "messageTH": "กรุณากรอกชื่อผู้ใช้" },
+  "USR002": { "id": "USR002", "name": "PASSWORD_REQUIRED", "messageEN": "Password is required", "messageTH": "กรุณากรอกรหัสผ่าน" },
+  "USR003": { "id": "USR003", "name": "PASSWORD_TOO_SHORT", "messageEN": "Password must be at least 6 characters", "messageTH": "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร" },
+  "USR004": { "id": "USR004", "name": "NAME_REQUIRED", "messageEN": "Name is required", "messageTH": "กรุณากรอกชื่อ" },
+  "USR005": { "id": "USR005", "name": "USERNAME_ALREADY_EXISTS", "messageEN": "Username already exists", "messageTH": "ชื่อผู้ใช้นี้มีอยู่แล้ว" },
+  "USR006": { "id": "USR006", "name": "USER_NOT_FOUND", "messageEN": "User not found", "messageTH": "ไม่พบผู้ใช้งาน" },
+  "USR007": { "id": "USR007", "name": "INVALID_CREDENTIALS", "messageEN": "Invalid email or password", "messageTH": "อีเมลหรือรหัสผ่านไม่ถูกต้อง" }
+}
