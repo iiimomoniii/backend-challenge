@@ -13,5 +13,28 @@ services:
     volumes:
       - mongodb_data:/data/db
 
+  postgresql:
+    image: postgres:16
+    container_name: backend-challenge-postgresql
+    restart: unless-stopped
+
+    ports:
+      - "5432:5432"
+
+    environment:
+      POSTGRES_DB: backend_challenge
+      POSTGRES_USER: backend_challenge
+      POSTGRES_PASSWORD: backend_challenge
+
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U backend_challenge -d backend_challenge"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   mongodb_data:
+  postgresql_data:

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log"
 	"net/http"
@@ -18,17 +19,22 @@ import (
 	appauth "github.com/iiimomoniii/backend-challenge/internal/application/auth"
 	appuser "github.com/iiimomoniii/backend-challenge/internal/application/user"
 	appworker "github.com/iiimomoniii/backend-challenge/internal/application/worker"
+	domainuser "github.com/iiimomoniii/backend-challenge/internal/domain/user"
 	jwtprovider "github.com/iiimomoniii/backend-challenge/internal/infrastructure/auth/jwt"
 	mongouser "github.com/iiimomoniii/backend-challenge/internal/infrastructure/database/mongodb/user"
+	postgresuser "github.com/iiimomoniii/backend-challenge/internal/infrastructure/database/postgresql/user"
 	bcrypthasher "github.com/iiimomoniii/backend-challenge/internal/infrastructure/hasher/bcrypt"
 	httpapi "github.com/iiimomoniii/backend-challenge/internal/interface/http"
 	"github.com/iiimomoniii/backend-challenge/internal/interface/http/handler"
 	"github.com/iiimomoniii/backend-challenge/internal/interface/http/middleware"
+	_ "github.com/lib/pq"
 )
 
 // อ่านมาจาก environment variables พร้อมค่า default รันบนเครื่อง local
 type config struct {
 	HTTPPort        string
+	DatabaseDriver  string
+	PostgresURI     string
 	MongoURI        string
 	MongoDatabase   string
 	MongoCollection string
@@ -42,11 +48,17 @@ type config struct {
 // loadConfig อ่านค่า configจาก env
 func loadConfig() config {
 	cfg := config{
-		HTTPPort:        getEnv("HTTP_PORT", "8085"),
+		HTTPPort: getEnv("HTTP_PORT", "8085"),
+
+		DatabaseDriver: getEnv("DATABASE_DRIVER", "postgresql"), // Select the database: mongodb or postgresql
+		//Postgres
+		PostgresURI: getEnv("POSTGRES_URI", "postgres://backend_challenge:backend_challenge@localhost:5432/backend_challenge?sslmode=disable"),
+		//Mongo
 		MongoURI:        getEnv("MONGO_URI", "mongodb://localhost:27017"),
 		MongoDatabase:   getEnv("MONGO_DATABASE", "backend_challenge"),
 		MongoCollection: getEnv("MONGO_USER_COLLECTION", "users"),
 		MongoTimeout:    getEnvDuration("MONGO_TIMEOUT", 10*time.Second),
+
 		JWTSecret:       getEnv("JWT_SECRET", "dev-secret-change-me"),
 		JWTTTL:          getEnvDuration("JWT_TTL", 24*time.Hour),
 		CounterInterval: getEnvDuration("USER_COUNTER_INTERVAL", 30*time.Second),
@@ -89,39 +101,62 @@ func main() {
 	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// เชื่อมต่อ MongoDB
+	// เลือก database adapter จาก DATABASE_DRIVER
+	var userRepo domainuser.Repository
+	var mongoClient *mongo.Client
+	var postgresDB *sql.DB
+	var err error
 	connectCtx, cancelConnect := context.WithTimeout(rootCtx, cfg.MongoTimeout)
 	defer cancelConnect()
 
-	mongoClient, err := mongo.Connect(connectCtx, options.Client().ApplyURI(cfg.MongoURI))
-	if err != nil {
-		log.Fatalf("failed to connect to mongodb: %v", err)
-	}
-	if err := mongoClient.Ping(connectCtx, nil); err != nil {
-		log.Fatalf("failed to ping mongodb: %v", err)
-	}
-	log.Printf("connected to mongodb (database=%s)", cfg.MongoDatabase)
-
-	// ปิดการเชื่อมต่อ mongodb ก่อนออกจาก app นี้
-	defer func() {
-		disconnectCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
-		defer cancel()
-		if err := mongoClient.Disconnect(disconnectCtx); err != nil {
-			log.Printf("error disconnecting from mongodb: %v", err)
+	switch cfg.DatabaseDriver {
+	case "mongodb":
+		mongoClient, err = mongo.Connect(connectCtx, options.Client().ApplyURI(cfg.MongoURI))
+		if err != nil {
+			log.Fatalf("failed to connect to mongodb: %v", err)
 		}
-	}()
+		if err := mongoClient.Ping(connectCtx, nil); err != nil {
+			log.Fatalf("failed to ping mongodb: %v", err)
+		}
+		log.Printf("connected to mongodb (database=%s)", cfg.MongoDatabase)
+		defer func() {
+			disconnectCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+			defer cancel()
+			if err := mongoClient.Disconnect(disconnectCtx); err != nil {
+				log.Printf("error disconnecting from mongodb: %v", err)
+			}
+		}()
 
-	userCollection := mongoClient.Database(cfg.MongoDatabase).Collection(cfg.MongoCollection)
+		userCollection := mongoClient.Database(cfg.MongoDatabase).Collection(cfg.MongoCollection)
+		if err := ensureIndexes(connectCtx, userCollection); err != nil {
+			log.Fatalf("failed to ensure mongodb indexes: %v", err)
+		}
+		userRepo = mongouser.New(userCollection)
+	case "postgresql":
+		postgresDB, err = sql.Open("postgres", cfg.PostgresURI)
+		if err != nil {
+			log.Fatalf("failed to configure postgresql: %v", err)
+		}
+		if err := postgresDB.PingContext(connectCtx); err != nil {
+			log.Fatalf("failed to connect to postgresql: %v", err)
+		}
+		log.Println("connected to postgresql")
+		defer func() {
+			if err := postgresDB.Close(); err != nil {
+				log.Printf("error closing postgresql connection: %v", err)
+			}
+		}()
 
-	// สร้าง unique index บน email เพื่อป้องกันข้อมูลซ้ำในระดับ database
-	indexCtx, cancelIndex := context.WithTimeout(rootCtx, cfg.MongoTimeout)
-	defer cancelIndex()
-	if err := ensureIndexes(indexCtx, userCollection); err != nil {
-		log.Fatalf("failed to ensure mongodb indexes: %v", err)
+		postgresRepo := postgresuser.New(postgresDB)
+		if err := postgresRepo.EnsureSchema(connectCtx); err != nil {
+			log.Fatalf("failed to ensure postgresql schema: %v", err)
+		}
+		userRepo = postgresRepo
+	default:
+		log.Fatalf("unsupported DATABASE_DRIVER %q (supported: mongodb, postgresql)", cfg.DatabaseDriver)
 	}
 
 	// Infrastructure layer
-	userRepo := mongouser.New(userCollection)
 	hasher := bcrypthasher.New()
 	tokenProvider := jwtprovider.New(cfg.JWTSecret, cfg.JWTTTL)
 
