@@ -96,6 +96,7 @@ AUTH_METHOD=jwt
 After changing `.env`, load it again before starting the API:
 
 ```sh
+cp .env.example .env # first time only
 source .env
 go run ./cmd/api
 ```
