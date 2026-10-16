@@ -83,24 +83,46 @@ Start the local PostgreSQL service with `docker compose up -d postgresql`.
 
 ## Authentication selection
 
-Set `AUTH_METHOD=jwt` to use the built-in JWT login flow. Set `AUTH_METHOD=oauth2` to validate bearer access tokens through an OAuth 2.0 token introspection endpoint. In OAuth2 mode, tokens must be obtained from the external authorization server; this API does not expose `POST /login` or issue OAuth2 tokens.
+Choose the authentication method with `AUTH_METHOD` in your environment or `.env` file. The application defaults to JWT when `AUTH_METHOD` is not set:
+
+```env
+# Use the built-in JWT login flow (default)
+AUTH_METHOD=jwt
+
+# Or validate bearer tokens through OAuth 2.0 introspection
+# AUTH_METHOD=oauth2
+```
+
+After changing `.env`, load it again before starting the API:
+
+```sh
+source .env
+go run ./cmd/api
+```
+
+The startup log prints the selected method, for example `authentication method: jwt` or `authentication method: oauth2 token introspection`. With JWT, use `POST /login` to get a token. With OAuth2, the API does not expose `POST /login` or issue tokens; obtain a bearer token from the authorization server and send it to the API.
 
 Configure OAuth2 mode with `OAUTH2_INTROSPECTION_URL`, `OAUTH2_CLIENT_ID`, and `OAUTH2_CLIENT_SECRET`; `OAUTH2_TIMEOUT` defaults to `5s`. The introspection endpoint must use HTTPS in normal configurations and return an active token with a `sub` or `username` value. For local development only, `OAUTH2_ALLOW_INSECURE_HTTP=true` permits HTTP URLs on loopback addresses (`localhost`, `127.0.0.1`, or `::1`). The optional `email` and `exp` values are copied into the request auth context. The verifier sends the token using the RFC 7662 form-encoded introspection request and authenticates as an OAuth client.
 
 
 ### Local OAuth2 mock
 
-A lightweight mock OAuth2 server is available for trying the OAuth2 flow without external credentials. It runs only on `127.0.0.1:8090`, supports the `client_credentials` grant at `/token`, and checks access tokens at `/introspect`. It always issues the fixed token `local-test-token` for the configured mock client and maps it to a demo user. This is a development simulation, not a production authorization server or an interactive user login flow.
+A lightweight mock OAuth2 server is available for trying the OAuth2 flow without external credentials. Enable it with `OAUTH2_LOCAL_MOCK=true`; it runs in the same `go run ./cmd/api` process on `127.0.0.1:8090`, supports the `client_credentials` grant at `/token`, and checks access tokens at `/introspect`. It issues the configured test token (default `local-test-token`) for the configured OAuth2 client and maps it to a demo user. This is a development simulation, not a production authorization server or an interactive user login flow.
 
 In Postman, select **OAuth 2.0** and configure **Client Credentials** with Access Token URL `http://127.0.0.1:8090/token`, Client ID `local-mock-client`, Client Secret `local-mock-secret`, and client authentication as **Send as Basic Auth header**. Select **Get New Access Token**, then **Use Token**.
 
-Start the mock in one terminal:
+For local mock testing, set these values in `.env` (use the same client credentials for the mock and introspection):
 
-```sh
-go run ./cmd/mock-oauth2
+```env
+AUTH_METHOD=oauth2
+OAUTH2_LOCAL_MOCK=true
+OAUTH2_INTROSPECTION_URL=http://127.0.0.1:8090/introspect
+OAUTH2_ALLOW_INSECURE_HTTP=true
+OAUTH2_CLIENT_ID=local-mock-client
+OAUTH2_CLIENT_SECRET=local-mock-secret
 ```
 
-With the local mock values in `.env`, start the API in another terminal:
+Then start both the API and mock with one command:
 
 ```sh
 source .env

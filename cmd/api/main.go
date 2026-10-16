@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -43,6 +44,10 @@ type config struct {
 	OAuth2ClientSecret      string
 	OAuth2Timeout           time.Duration
 	OAuth2AllowInsecureHTTP bool
+	OAuth2LocalMock         bool
+	OAuth2MockAccessToken   string
+	OAuth2MockSubject       string
+	OAuth2MockEmail         string
 	DatabaseDriver          string
 	PostgresURI             string
 	MongoURI                string
@@ -70,6 +75,10 @@ func loadConfig() config {
 		OAuth2ClientSecret:      getEnv("OAUTH2_CLIENT_SECRET", ""),
 		OAuth2Timeout:           getEnvDuration("OAUTH2_TIMEOUT", 5*time.Second),
 		OAuth2AllowInsecureHTTP: getEnvBool("OAUTH2_ALLOW_INSECURE_HTTP", false),
+		OAuth2LocalMock:         getEnvBool("OAUTH2_LOCAL_MOCK", false),
+		OAuth2MockAccessToken:   getEnv("OAUTH2_MOCK_ACCESS_TOKEN", "local-test-token"),
+		OAuth2MockSubject:       getEnv("OAUTH2_MOCK_SUBJECT", "local-user-1"),
+		OAuth2MockEmail:         getEnv("OAUTH2_MOCK_EMAIL", "demo@example.test"),
 
 		DatabaseDriver: getEnv("DATABASE_DRIVER", "postgresql"), // Select the database: mongodb or postgresql
 		//Postgres
@@ -192,6 +201,8 @@ func main() {
 	hasher := bcrypthasher.New()
 	var tokenIssuer domainauth.TokenIssuer
 	var tokenVerifier domainauth.TokenVerifier
+	var oauth2MockServer *http.Server
+	var oauth2MockListener net.Listener
 	switch cfg.AuthMethod {
 	case "jwt":
 		jwtTokens := jwtprovider.New(cfg.JWTSecret, cfg.JWTTTL)
@@ -199,6 +210,23 @@ func main() {
 		tokenVerifier = jwtTokens
 		log.Println("authentication method: jwt")
 	case "oauth2":
+		if cfg.OAuth2LocalMock {
+			const mockAddr = "127.0.0.1:8090"
+			oauth2MockServer = oauth2introspection.NewLocalMockServer(
+				mockAddr,
+				cfg.OAuth2ClientID,
+				cfg.OAuth2ClientSecret,
+				cfg.OAuth2MockAccessToken,
+				cfg.OAuth2MockSubject,
+				cfg.OAuth2MockEmail,
+			)
+			oauth2MockListener, err = net.Listen("tcp", mockAddr)
+			if err != nil {
+				log.Fatalf("failed to start local OAuth2 mock on %s: %v", mockAddr, err)
+			}
+			log.Printf("local OAuth2 mock listening on http://%s", mockAddr)
+			log.Printf("local OAuth2 test access token: %s", cfg.OAuth2MockAccessToken)
+		}
 		oauth2Tokens, err := oauth2introspection.NewIntrospector(
 			cfg.OAuth2IntrospectionURL,
 			cfg.OAuth2ClientID,
@@ -261,6 +289,13 @@ func main() {
 		}
 		serverErrCh <- nil
 	}()
+	if oauth2MockServer != nil {
+		go func() {
+			if err := oauth2MockServer.Serve(oauth2MockListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Printf("local OAuth2 mock server error: %v", err)
+			}
+		}()
+	}
 
 	// รอจนกว่าจะได้รับ shutdown signal หรือ server ทำงานผิดพลาด
 	select {
@@ -282,6 +317,12 @@ func main() {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Printf("error during http server shutdown: %v", err)
 		_ = server.Close()
+	}
+	if oauth2MockServer != nil {
+		if err := oauth2MockServer.Shutdown(shutdownCtx); err != nil {
+			log.Printf("error during local OAuth2 mock shutdown: %v", err)
+			_ = oauth2MockServer.Close()
+		}
 	}
 
 	// รอให้ background worker หยุดทำงานให้เรียบร้อยก่อนออกจาก app นี้
