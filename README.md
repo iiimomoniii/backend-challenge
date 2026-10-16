@@ -80,3 +80,37 @@ The local PostgreSQL connection defaults to `postgres://backend_challenge:backen
 The PostgreSQL adapter creates the `users` table on startup with the existing user fields (`id`, `name`, `email`, `password`, `created_at`).
 
 Start the local PostgreSQL service with `docker compose up -d postgresql`.
+
+## Authentication selection
+
+Set `AUTH_METHOD=jwt` to use the built-in JWT login flow. Set `AUTH_METHOD=oauth2` to validate bearer access tokens through an OAuth 2.0 token introspection endpoint. In OAuth2 mode, tokens must be obtained from the external authorization server; this API does not expose `POST /login` or issue OAuth2 tokens.
+
+Configure OAuth2 mode with `OAUTH2_INTROSPECTION_URL`, `OAUTH2_CLIENT_ID`, and `OAUTH2_CLIENT_SECRET`; `OAUTH2_TIMEOUT` defaults to `5s`. The introspection endpoint must use HTTPS in normal configurations and return an active token with a `sub` or `username` value. For local development only, `OAUTH2_ALLOW_INSECURE_HTTP=true` permits HTTP URLs on loopback addresses (`localhost`, `127.0.0.1`, or `::1`). The optional `email` and `exp` values are copied into the request auth context. The verifier sends the token using the RFC 7662 form-encoded introspection request and authenticates as an OAuth client.
+
+
+### Local OAuth2 mock
+
+A lightweight mock OAuth2 server is available for trying the OAuth2 flow without external credentials. It runs only on `127.0.0.1:8090`, supports the `client_credentials` grant at `/token`, and checks access tokens at `/introspect`. It always issues the fixed token `local-test-token` for the configured mock client and maps it to a demo user. This is a development simulation, not a production authorization server or an interactive user login flow.
+
+In Postman, select **OAuth 2.0** and configure **Client Credentials** with Access Token URL `http://127.0.0.1:8090/token`, Client ID `local-mock-client`, Client Secret `local-mock-secret`, and client authentication as **Send as Basic Auth header**. Select **Get New Access Token**, then **Use Token**.
+
+Start the mock in one terminal:
+
+```sh
+go run ./cmd/mock-oauth2
+```
+
+With the local mock values in `.env`, start the API in another terminal:
+
+```sh
+source .env
+go run ./cmd/api
+```
+
+Or call an authenticated endpoint with `Authorization: Bearer local-test-token`, for example:
+
+```sh
+curl -H "Authorization: Bearer local-test-token" http://localhost:8085/users
+```
+
+Any other token is reported inactive and receives `401`. The mock credentials and loopback HTTP exception are for local development only.

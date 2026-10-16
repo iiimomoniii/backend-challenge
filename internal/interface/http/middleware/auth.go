@@ -12,10 +12,10 @@ import (
 	"github.com/iiimomoniii/backend-challenge/pkg/code"
 )
 
-//contextKey
+// contextKey
 type contextKey string
 
-//Request Context
+// Request Context
 const (
 	userIDContextKey contextKey = "auth_user_id"
 	emailContextKey  contextKey = "auth_email"
@@ -24,12 +24,12 @@ const (
 // Auth ทำหน้าที่จัดการ authentication middleware
 // โดยใช้ TokenProvider สำหรับตรวจสอบ authentication token
 type Auth struct {
-	tokens domainauth.TokenProvider
+	tokens domainauth.TokenVerifier
 }
 
 // NewAuth สร้าง auth middleware
 // โดยรับ TokenProvider ที่ใช้ตรวจสอบ Token เข้ามา
-func NewAuth(tokens domainauth.TokenProvider) *Auth {
+func NewAuth(tokens domainauth.TokenVerifier) *Auth {
 	return &Auth{tokens: tokens}
 }
 
@@ -43,7 +43,7 @@ func (a *Auth) Middleware(next http.Handler) http.Handler {
 		// ตัด "Bearer " ออกจาก authorization header
 		// เพื่อให้ได้เฉพาะ token
 		token, ok := strings.CutPrefix(header, "Bearer ")
-	    // ถ้าไม่มี Bearer Token หรือ token เป็นค่าว่าง
+		// ถ้าไม่มี Bearer Token หรือ token เป็นค่าว่าง
 		// ให้คืน unauthorized กลับไปทันที
 		if !ok || token == "" {
 			writeUnauthorized(w, r)

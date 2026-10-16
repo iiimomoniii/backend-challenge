@@ -11,7 +11,9 @@ func NewRouter(userHandler *handler.UserHandler, authHandler *handler.AuthHandle
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("POST /register", userHandler.Create)
-	mux.HandleFunc("POST /login", authHandler.Login)
+	if authHandler != nil {
+		mux.HandleFunc("POST /login", authHandler.Login)
+	}
 
 	mux.Handle("GET /users", auth.Middleware(http.HandlerFunc(userHandler.SearchAll)))
 	mux.Handle("GET /users/{id}", auth.Middleware(http.HandlerFunc(userHandler.Search)))

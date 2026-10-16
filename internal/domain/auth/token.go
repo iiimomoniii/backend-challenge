@@ -11,7 +11,16 @@ type AuthPayload struct {
 	ExpiresAt time.Time
 }
 
-type TokenProvider interface {
+type TokenIssuer interface {
 	Generate(ctx context.Context, claims AuthPayload) (string, error)
+}
+
+type TokenVerifier interface {
 	Verify(ctx context.Context, token string) (*AuthPayload, error)
+}
+
+// TokenProvider is implemented by local token providers such as JWT.
+type TokenProvider interface {
+	TokenIssuer
+	TokenVerifier
 }

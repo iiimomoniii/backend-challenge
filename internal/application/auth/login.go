@@ -32,16 +32,16 @@ type LoginResponse struct {
 type LoginUseCase struct {
 	users  domainuser.Repository
 	hasher domainauth.PasswordHasher
-	tokens domainauth.TokenProvider
+	tokens domainauth.TokenIssuer
 }
 
 // NewLoginUseCase สร้าง LoginUseCase
 // โดยรับ Repository, PasswordHasher และ TokenProvider ที่ต้องการใช้งานเข้ามา
-func NewLoginUseCase(users domainuser.Repository, hasher domainauth.PasswordHasher, tokens domainauth.TokenProvider) *LoginUseCase {
+func NewLoginUseCase(users domainuser.Repository, hasher domainauth.PasswordHasher, tokens domainauth.TokenIssuer) *LoginUseCase {
 	return &LoginUseCase{users: users, hasher: hasher, tokens: tokens}
 }
 
-//ทำการ login และreturn authentication token  พร้อมกับข้อมูล user เมื่อ login ผ่าน
+// ทำการ login และreturn authentication token  พร้อมกับข้อมูล user เมื่อ login ผ่าน
 func (uc *LoginUseCase) Execute(ctx context.Context, req LoginRequest) (*LoginResponse, error) {
 	//ตัด space
 	email := strings.TrimSpace(req.Email)
@@ -68,8 +68,8 @@ func (uc *LoginUseCase) Execute(ctx context.Context, req LoginRequest) (*LoginRe
 	}
 
 	// สร้าง authentication token
-	// โดยส่งข้อมูลที่จำเป็นเช่น id กับ email  
-    // ไปใส่ไว้ใน Token Payload
+	// โดยส่งข้อมูลที่จำเป็นเช่น id กับ email
+	// ไปใส่ไว้ใน Token Payload
 	token, err := uc.tokens.Generate(ctx, domainauth.AuthPayload{
 		UserID: u.ID,
 		Email:  u.Email,
